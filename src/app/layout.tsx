@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { NavLinks } from "@/components/NavLinks";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,26 +29,27 @@ export default function RootLayout({
       lang="zh-Hant"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900">
-        <header className="border-b border-zinc-200 bg-white">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-            <Link href="/" className="text-lg font-semibold tracking-tight">
-              投資 Playbook
+      <body className="min-h-full flex flex-col antialiased">
+        <header className="pb-header">
+          <div className="mx-auto max-w-6xl px-5">
+            <Link href="/" className="inline-block">
+              <h1>📈 投資 Playbook</h1>
             </Link>
-            <nav className="flex gap-6 text-sm font-medium text-zinc-600">
-              <Link href="/" className="hover:text-zinc-900">
-                Dashboard
-              </Link>
-              <Link href="/trades" className="hover:text-zinc-900">
-                交易記錄
-              </Link>
-            </nav>
+            <div className="pb-sub">信念 · 注碼 · 驅動因子 · 買入價位 · 催化劑 · 前景</div>
+            <div className="pb-meta">
+              僅供個人研究/教育，非投資建議。即時價/市值來自 FMP；基本面/SA Premium 由用戶手動輸入。
+            </div>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+        <nav className="pb-nav">
+          <div className="mx-auto max-w-6xl px-5">
+            <NavLinks />
+          </div>
+        </nav>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-6">
           {children}
         </main>
-        <footer className="border-t border-zinc-200 py-6 text-center text-xs text-zinc-400">
+        <footer className="border-t py-6 text-center text-xs" style={{ borderColor: "var(--line)", color: "var(--muted)" }}>
           僅供個人研究/教育，非投資建議
         </footer>
       </body>

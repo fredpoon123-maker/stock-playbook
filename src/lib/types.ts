@@ -38,3 +38,24 @@ export function parseJSON<T>(value: string | null | undefined, fallback: T): T {
     return fallback;
   }
 }
+
+export type StockView = {
+  id: string;
+  ticker: string;
+  name: string;
+  driver: string;
+  industry: string | null;
+  conviction: string;
+  positionSize: string;
+  status: string;
+  synopsis: string | null;
+  entryTiers: EntryTiers;
+  catalysts: string[];
+  risks: string[];
+  nextEarnings: string | null;
+  price: number | null;
+  marketCap: number | null;
+  beta: number | null;
+  peRatio: number | null;
+  peerAvgPE: number | null;
+};

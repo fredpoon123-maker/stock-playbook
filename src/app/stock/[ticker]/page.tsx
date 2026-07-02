@@ -38,47 +38,65 @@ export default async function StockDetailPage({
   const factorGrades = parseJSON<FactorGrades>(stock.saFactorGrades, {});
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">{stock.ticker}</h1>
-            <span>{status.emoji}</span>
-            <span className="text-sm text-zinc-500">{status.label}</span>
+    <div className="flex flex-col gap-5">
+      <div className="pb-card" style={{ cursor: "default" }}>
+        <div className="pb-top">
+          <div>
+            <h3>
+              {stock.ticker}{" "}
+              <span className={`pb-pill ${status.emoji === "🟢" ? "pb-b-buy" : status.emoji === "🟡" ? "pb-b-hold" : "pb-b-avoid"}`}>
+                {status.emoji}
+              </span>
+            </h3>
+            <div className="pb-tname">
+              {stock.name} — {status.label}
+            </div>
           </div>
-          <p className="text-zinc-500">{stock.name}</p>
+          <div className="pb-px">
+            <div className="pb-p">
+              {stock.priceCache?.price != null ? `$${stock.priceCache.price.toFixed(2)}` : "未刷新"}
+            </div>
+            <div className="pb-m">
+              {stock.priceCache?.marketCap != null ? `$${(stock.priceCache.marketCap / 1e9).toFixed(1)}B` : ""}
+              {stock.priceCache?.beta != null ? ` · β${stock.priceCache.beta.toFixed(2)}` : ""}
+            </div>
+          </div>
         </div>
-        <Link
-          href={`/stock/${stock.ticker}/edit`}
-          className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-        >
-          編輯
-        </Link>
+        <div className="pb-strip">
+          <div>
+            <div className="pb-k">信念</div>
+            <div className={`pb-v ${stock.conviction === "HIGH" ? "pb-conv-h" : stock.conviction === "MED" ? "pb-conv-m" : "pb-conv-l"}`}>
+              {CONVICTION_LABEL[stock.conviction]}
+            </div>
+          </div>
+          <div>
+            <div className="pb-k">注碼</div>
+            <div className="pb-v">{POSITION_LABEL[stock.positionSize]}</div>
+          </div>
+          <div>
+            <div className="pb-k">驅動</div>
+            <div className="pb-v">{stock.driver}</div>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Stat label="信念" value={CONVICTION_LABEL[stock.conviction]} />
-        <Stat label="注碼" value={POSITION_LABEL[stock.positionSize]} />
-        <Stat label="驅動" value={stock.driver} />
-        <Stat
-          label="現價"
-          value={
-            stock.priceCache?.price != null
-              ? `$${stock.priceCache.price.toFixed(2)}`
-              : "未刷新"
-          }
-        />
-      </div>
+      <Link
+        href={`/stock/${stock.ticker}/edit`}
+        className="pb-fbtn active self-start"
+        style={{ textDecoration: "none" }}
+      >
+        編輯
+      </Link>
 
       {stock.synopsis && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-500">簡介</h2>
-          <p className="mt-1 text-zinc-700">{stock.synopsis}</p>
+        <section className="pb-panel">
+          <h2 className="pb-section" style={{ margin: 0 }}>簡介</h2>
+          <p className="mt-2 text-sm">{stock.synopsis}</p>
         </section>
       )}
 
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-zinc-500">估值 / PE比較</h2>
+      <section className="pb-panel">
+        <h2 className="pb-section" style={{ margin: 0 }}>估值 / PE比較</h2>
         <div className="mt-2">
           <PEBadge
             peRatio={stock.priceCache?.peRatio}
@@ -87,29 +105,38 @@ export default async function StockDetailPage({
         </div>
       </section>
 
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-zinc-500">買入框架</h2>
-        <div className="mt-2 grid grid-cols-3 gap-4 text-sm">
-          <EntryTier label="第一注" value={entryTiers.first} />
-          <EntryTier label="加注" value={entryTiers.add} />
-          <EntryTier label="重注" value={entryTiers.heavy} />
+      <section className="pb-panel">
+        <h2 className="pb-section" style={{ margin: 0 }}>買入框架</h2>
+        <div className="pb-entries mt-3">
+          <div className="pb-entry">
+            <div className="pb-e1">第一注</div>
+            <div className="pb-e2">{entryTiers.first != null ? `$${entryTiers.first.toFixed(2)}` : "—"}</div>
+          </div>
+          <div className="pb-entry">
+            <div className="pb-e1">加注</div>
+            <div className="pb-e2">{entryTiers.add != null ? `$${entryTiers.add.toFixed(2)}` : "—"}</div>
+          </div>
+          <div className="pb-entry">
+            <div className="pb-e1">重注</div>
+            <div className="pb-e2">{entryTiers.heavy != null ? `$${entryTiers.heavy.toFixed(2)}` : "—"}</div>
+          </div>
         </div>
       </section>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <section className="rounded-lg border border-zinc-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-zinc-500">催化劑</h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-zinc-700">
-            {catalysts.length === 0 && <li className="text-zinc-400 list-none pl-0">—</li>}
+        <section className="pb-panel">
+          <h2 className="pb-section" style={{ margin: 0 }}>催化劑</h2>
+          <ul className="pb-mini mt-2">
+            {catalysts.length === 0 && <li style={{ listStyle: "none", marginLeft: "-15px", color: "var(--muted)" }}>—</li>}
             {catalysts.map((c, i) => (
               <li key={i}>{c}</li>
             ))}
           </ul>
         </section>
-        <section className="rounded-lg border border-zinc-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-zinc-500">風險 ⚠️</h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-zinc-700">
-            {risks.length === 0 && <li className="text-zinc-400 list-none pl-0">—</li>}
+        <section className="pb-panel">
+          <h2 className="pb-section" style={{ margin: 0 }}>風險 ⚠️</h2>
+          <ul className="pb-mini mt-2">
+            {risks.length === 0 && <li style={{ listStyle: "none", marginLeft: "-15px", color: "var(--muted)" }}>—</li>}
             {risks.map((r, i) => (
               <li key={i}>{r}</li>
             ))}
@@ -117,11 +144,11 @@ export default async function StockDetailPage({
         </section>
       </div>
 
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-zinc-500">
+      <section className="pb-panel">
+        <h2 className="pb-section" style={{ margin: 0 }}>
           Seeking Alpha Premium資料（手動輸入）
         </h2>
-        <div className="mt-2 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
           <Stat label="Quant Rating" value={stock.saQuantRating || "—"} />
           <Stat label="Author Rating" value={stock.saAuthorRating || "—"} />
           <Stat label="Valuation Grade" value={factorGrades.valuation || "—"} />
@@ -133,30 +160,28 @@ export default async function StockDetailPage({
       </section>
 
       {stock.nextEarnings && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-500">下次業績</h2>
-          <p className="mt-1 text-zinc-700">
-            {new Date(stock.nextEarnings).toLocaleDateString("zh-HK")}
-          </p>
-        </section>
+        <div className="pb-earn">
+          📅 下次業績 <span className="pb-nd">{new Date(stock.nextEarnings).toLocaleDateString("zh-HK")}</span>
+        </div>
       )}
 
-      <section className="rounded-lg border border-zinc-200 bg-white p-4">
+      <section className="pb-panel">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-500">交易記錄</h2>
+          <h2 className="pb-section" style={{ margin: 0 }}>交易記錄</h2>
           <Link
             href={`/trades?ticker=${stock.ticker}`}
-            className="text-xs font-medium text-zinc-600 hover:text-zinc-900"
+            className="text-xs font-medium"
+            style={{ color: "var(--accent)" }}
           >
             + 新增交易
           </Link>
         </div>
         {stock.trades.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-400">未有交易記錄</p>
+          <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>未有交易記錄</p>
         ) : (
           <table className="mt-2 w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-zinc-400">
+              <tr className="text-left text-xs" style={{ color: "var(--muted)" }}>
                 <th className="pb-1 font-normal">日期</th>
                 <th className="pb-1 font-normal">動作</th>
                 <th className="pb-1 font-normal">價格</th>
@@ -166,7 +191,7 @@ export default async function StockDetailPage({
             </thead>
             <tbody>
               {stock.trades.map((t) => (
-                <tr key={t.id} className="border-t border-zinc-100">
+                <tr key={t.id} style={{ borderTop: "1px solid var(--line)" }}>
                   <td className="py-1">
                     {new Date(t.date).toLocaleDateString("zh-HK")}
                   </td>
@@ -175,7 +200,7 @@ export default async function StockDetailPage({
                   </td>
                   <td className="py-1">${t.price.toFixed(2)}</td>
                   <td className="py-1">{t.shares}</td>
-                  <td className="py-1 text-zinc-500">{t.note || "—"}</td>
+                  <td className="py-1" style={{ color: "var(--muted)" }}>{t.note || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -184,9 +209,9 @@ export default async function StockDetailPage({
       </section>
 
       {stock.notes && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-500">筆記</h2>
-          <p className="mt-1 whitespace-pre-wrap text-zinc-700">{stock.notes}</p>
+        <section className="pb-panel">
+          <h2 className="pb-section" style={{ margin: 0 }}>筆記</h2>
+          <p className="mt-2 whitespace-pre-wrap text-sm">{stock.notes}</p>
         </section>
       )}
     </div>
@@ -196,19 +221,8 @@ export default async function StockDetailPage({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs text-zinc-400">{label}</div>
-      <div className="text-sm font-medium text-zinc-800">{value}</div>
-    </div>
-  );
-}
-
-function EntryTier({ label, value }: { label: string; value: number | null }) {
-  return (
-    <div>
-      <div className="text-xs text-zinc-400">{label}</div>
-      <div className="text-base font-semibold text-zinc-800">
-        {value != null ? `$${value.toFixed(2)}` : "—"}
-      </div>
+      <div className="text-xs" style={{ color: "var(--muted)" }}>{label}</div>
+      <div className="text-sm font-medium">{value}</div>
     </div>
   );
 }

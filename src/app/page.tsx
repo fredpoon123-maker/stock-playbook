@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { StockCard } from "@/components/StockCard";
+import { StockGrid } from "@/components/StockGrid";
+import { SummaryTable } from "@/components/SummaryTable";
+import { driverColor } from "@/lib/driverColor";
+import { parseJSON, type EntryTiers, type StockView } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -10,63 +13,92 @@ export default async function DashboardPage() {
     orderBy: { ticker: "asc" },
   });
 
-  const byDriver = new Map<string, typeof stocks>();
-  for (const stock of stocks) {
-    const list = byDriver.get(stock.driver) ?? [];
-    list.push(stock);
-    byDriver.set(stock.driver, list);
-  }
-
   const total = stocks.length;
 
+  const driverCounts = new Map<string, number>();
+  for (const stock of stocks) {
+    driverCounts.set(stock.driver, (driverCounts.get(stock.driver) ?? 0) + 1);
+  }
+  const driverBreakdown = Array.from(driverCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([driver, count]) => ({
+      driver,
+      count,
+      pct: total > 0 ? (count / total) * 100 : 0,
+    }));
+  const top = driverBreakdown[0];
+
+  const view: StockView[] = stocks.map((s) => ({
+    id: s.id,
+    ticker: s.ticker,
+    name: s.name,
+    driver: s.driver,
+    industry: s.industry,
+    conviction: s.conviction,
+    positionSize: s.positionSize,
+    status: s.status,
+    synopsis: s.synopsis,
+    entryTiers: parseJSON<EntryTiers>(s.entryTiers, { first: null, add: null, heavy: null }),
+    catalysts: parseJSON<string[]>(s.catalysts, []),
+    risks: parseJSON<string[]>(s.risks, []),
+    nextEarnings: s.nextEarnings ? s.nextEarnings.toISOString() : null,
+    price: s.priceCache?.price ?? null,
+    marketCap: s.priceCache?.marketCap ?? null,
+    beta: s.priceCache?.beta ?? null,
+    peRatio: s.priceCache?.peRatio ?? null,
+    peerAvgPE: s.priceCache?.peerAvgPE ?? null,
+  }));
+
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            投資 Playbook
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            信念 · 注碼 · 驅動因子 · 買入價位 · PE比較 · 催化劑
-          </p>
-        </div>
-        <Link
-          href="/stock/new"
-          className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
-        >
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-end">
+        <Link href="/stock/new" className="pb-fbtn active" style={{ textDecoration: "none" }}>
           + 新增股票
         </Link>
       </div>
 
-      {total > 0 && (
-        <div className="rounded-lg border border-zinc-200 bg-white p-4">
-          <h2 className="text-sm font-medium text-zinc-700">驅動因子集中度</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {Array.from(byDriver.entries()).map(([driver, list]) => (
-              <span
-                key={driver}
-                className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-600"
-              >
-                {driver} · {list.length}隻 · {((list.length / total) * 100).toFixed(0)}%
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
       {total === 0 ? (
-        <p className="text-sm text-zinc-500">未有股票資料，請先加入。</p>
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          未有股票資料，請先加入。
+        </p>
       ) : (
-        Array.from(byDriver.entries()).map(([driver, list]) => (
-          <section key={driver} className="flex flex-col gap-3">
-            <h2 className="text-sm font-semibold text-zinc-500">{driver}</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {list.map((stock) => (
-                <StockCard key={stock.id} stock={stock} />
-              ))}
-            </div>
-          </section>
-        ))
+        <>
+          <h2 className="pb-section">⚠️ 驅動因子集中度</h2>
+          <div className="pb-concbox">
+            <div className="pb-conc-title">你押咗幾多喺同一個驅動因子？（按持股數目，{total} 隻中）</div>
+            <div className="pb-conc-sub">分散應該睇「驅動因子」而唔係 ticker 數目。同一因子 = 會一齊升跌。</div>
+            {driverBreakdown.map((d) => (
+              <div className="pb-bar" key={d.driver}>
+                <span className="pb-nm">{d.driver}</span>
+                <div className="pb-track">
+                  <div className="pb-fill" style={{ width: `${Math.max(d.pct, 6)}%`, background: driverColor(d.driver) }}>
+                    {d.count} 隻 · {d.pct.toFixed(0)}%
+                  </div>
+                </div>
+              </div>
+            ))}
+            {top && top.pct > 50 && (
+              <div className="pb-warn">
+                ⚠️ <b>集中度警告</b>：「{top.driver}」佔 <b>{top.pct.toFixed(0)}%</b>（{top.count}/{total} 隻）。考慮補返其他非相關驅動因子分散風險。
+              </div>
+            )}
+          </div>
+
+          <div className="pb-legend">
+            <span className="pb-badge pb-b-buy">🟢 Accumulate</span>
+            <span className="pb-badge pb-b-hold">🟡 Hold / Watch</span>
+            <span className="pb-badge pb-b-avoid">🔴 Avoid</span>
+            <span style={{ color: "var(--muted)" }}>
+              信念：<b className="pb-conv-h">High</b> / <b className="pb-conv-m">Med</b> / <b className="pb-conv-l">Low</b>
+            </span>
+          </div>
+
+          <h2 className="pb-section">📊 總覽</h2>
+          <SummaryTable stocks={view} />
+
+          <h2 className="pb-section">🗂 個股詳情</h2>
+          <StockGrid stocks={view} />
+        </>
       )}
     </div>
   );
