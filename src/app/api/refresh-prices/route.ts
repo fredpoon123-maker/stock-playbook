@@ -6,11 +6,11 @@ import {
   fetchPERatio,
   fetchPeerAveragePE,
   fetchDailyHistory,
-  fetchBiggestGainers,
-  fetchBiggestLosers,
-  fetchMostActive,
-  type MoverQuote,
+  fetchGeneralNews,
+  fetchStockNews,
+  fetchEconomicCalendar,
 } from "@/lib/fmp";
+import { MARKET_UNIVERSE } from "@/lib/marketUniverse";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -54,33 +54,101 @@ function isoDaysAgo(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function syncMarketMovers() {
-  const [gainers, losers, actives] = await Promise.all([
-    fetchBiggestGainers(),
-    fetchBiggestLosers(),
-    fetchMostActive(),
+async function syncMarketSnapshot() {
+  const quotes = await Promise.all(
+    MARKET_UNIVERSE.map(async (entry) => ({
+      entry,
+      quote: await fetchQuote(entry.ticker),
+    })),
+  );
+
+  const rows = quotes.filter((q) => q.quote != null);
+  if (rows.length === 0) return;
+
+  await prisma.$transaction(
+    rows.map(({ entry, quote }) =>
+      prisma.marketSnapshot.upsert({
+        where: { ticker: entry.ticker },
+        create: {
+          ticker: entry.ticker,
+          sector: entry.sector,
+          price: quote!.price,
+          changePercent: quote!.changePercent,
+          marketCap: quote!.marketCap,
+        },
+        update: {
+          sector: entry.sector,
+          price: quote!.price,
+          changePercent: quote!.changePercent,
+          marketCap: quote!.marketCap,
+          fetchedAt: new Date(),
+        },
+      }),
+    ),
+  );
+}
+
+async function syncNews(tickers: string[]) {
+  const [general, stockNewsLists] = await Promise.all([
+    fetchGeneralNews(20),
+    Promise.all(tickers.map(async (t) => ({ ticker: t, articles: await fetchStockNews(t, 5) }))),
   ]);
 
-  const categories: { category: string; quotes: MoverQuote[] }[] = [
-    { category: "GAINER", quotes: gainers },
-    { category: "LOSER", quotes: losers },
-    { category: "ACTIVE", quotes: actives },
-  ];
-
-  for (const { category, quotes } of categories) {
-    if (quotes.length === 0) continue;
-    await prisma.marketMover.deleteMany({ where: { category } });
-    await prisma.marketMover.createMany({
-      data: quotes.map((q) => ({
-        ticker: q.ticker,
-        name: q.name,
-        price: q.price,
-        changePercent: q.changePercent,
-        exchange: q.exchange,
-        category,
-      })),
-    });
+  const rows: { kind: string; ticker: string | null; title: string; url: string; source: string | null; publishedAt: Date }[] = [];
+  for (const a of general) {
+    rows.push({ kind: "GENERAL", ticker: null, title: a.title, url: a.url, source: a.source, publishedAt: new Date(a.publishedDate) });
   }
+  for (const { ticker, articles } of stockNewsLists) {
+    for (const a of articles) {
+      rows.push({ kind: "STOCK", ticker, title: a.title, url: a.url, source: a.source, publishedAt: new Date(a.publishedDate) });
+    }
+  }
+  if (rows.length === 0) return;
+
+  await prisma.$transaction(
+    rows.map((r) =>
+      prisma.newsItem.upsert({
+        where: { url_kind: { url: r.url, kind: r.kind } },
+        create: r,
+        update: { title: r.title, source: r.source, publishedAt: r.publishedAt },
+      }),
+    ),
+  );
+}
+
+async function syncEconomicCalendar() {
+  const from = new Date().toISOString().slice(0, 10);
+  const toDate = new Date();
+  toDate.setDate(toDate.getDate() + 14);
+  const to = toDate.toISOString().slice(0, 10);
+
+  const events = await fetchEconomicCalendar(from, to);
+  if (events.length === 0) return;
+
+  await prisma.$transaction(
+    events.slice(0, 100).map((e) => {
+      const country = e.country ?? "";
+      return prisma.economicEvent.upsert({
+        where: { event_country_date: { event: e.event, country, date: new Date(e.date) } },
+        create: {
+          event: e.event,
+          country,
+          date: new Date(e.date),
+          impact: e.impact,
+          actual: e.actual,
+          forecast: e.forecast,
+          previous: e.previous,
+        },
+        update: {
+          impact: e.impact,
+          actual: e.actual,
+          forecast: e.forecast,
+          previous: e.previous,
+          fetchedAt: new Date(),
+        },
+      });
+    }),
+  );
 }
 
 export async function GET(request: Request) {
@@ -139,12 +207,26 @@ export async function GET(request: Request) {
     }
   }
 
-  let moversOk = true;
+  let snapshotOk = true;
   try {
-    await syncMarketMovers();
+    await syncMarketSnapshot();
   } catch {
-    moversOk = false;
+    snapshotOk = false;
   }
 
-  return NextResponse.json({ refreshed: results.length, results, moversOk });
+  let newsOk = true;
+  try {
+    await syncNews(stocks.map((s) => s.ticker));
+  } catch {
+    newsOk = false;
+  }
+
+  let calendarOk = true;
+  try {
+    await syncEconomicCalendar();
+  } catch {
+    calendarOk = false;
+  }
+
+  return NextResponse.json({ refreshed: results.length, results, snapshotOk, newsOk, calendarOk });
 }

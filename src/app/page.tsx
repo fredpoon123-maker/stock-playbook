@@ -2,27 +2,33 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { StockGrid } from "@/components/StockGrid";
 import { SummaryTable } from "@/components/SummaryTable";
-import { PriceHeatmap, type MoverView } from "@/components/PriceHeatmap";
+import { PriceHeatmap, type SnapshotView } from "@/components/PriceHeatmap";
 import { RefreshButton } from "@/components/RefreshButton";
+import { DashboardTabs } from "@/components/DashboardTabs";
+import { NewsList } from "@/components/NewsList";
+import { EconomicCalendarTable } from "@/components/EconomicCalendarTable";
 import { driverColor } from "@/lib/driverColor";
 import { parseJSON, type EntryTiers, type StockView } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [stocks, moverRows] = await Promise.all([
+  const [stocks, snapshotRows, generalNews, stockNews, calendarEvents] = await Promise.all([
     prisma.stock.findMany({
       include: { priceCache: true },
       orderBy: { ticker: "asc" },
     }),
-    prisma.marketMover.findMany(),
+    prisma.marketSnapshot.findMany(),
+    prisma.newsItem.findMany({ where: { kind: "GENERAL" }, orderBy: { publishedAt: "desc" }, take: 20 }),
+    prisma.newsItem.findMany({ where: { kind: "STOCK" }, orderBy: { publishedAt: "desc" }, take: 30 }),
+    prisma.economicEvent.findMany({ orderBy: { date: "asc" }, take: 60 }),
   ]);
 
-  const movers: MoverView[] = moverRows.map((m) => ({
-    ticker: m.ticker,
-    name: m.name,
-    changePercent: m.changePercent,
-    category: m.category as MoverView["category"],
+  const snapshot: SnapshotView[] = snapshotRows.map((s) => ({
+    ticker: s.ticker,
+    sector: s.sector,
+    changePercent: s.changePercent,
+    marketCap: s.marketCap,
   }));
 
   const total = stocks.length;
@@ -71,8 +77,61 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <h2 className="pb-section">🔥 Heatmap</h2>
-      <PriceHeatmap stocks={view} movers={movers} />
+      <DashboardTabs
+        heatmap={<PriceHeatmap stocks={view} snapshot={snapshot} />}
+        news={
+          <div className="pb-panel">
+            <div className="pb-conc-title">重要新聞總結</div>
+            <div className="pb-conc-sub">全市場最新頭條（一次刷新最多20則）。</div>
+            <NewsList
+              items={generalNews.map((n) => ({
+                id: n.id,
+                ticker: n.ticker,
+                title: n.title,
+                url: n.url,
+                source: n.source,
+                publishedAt: n.publishedAt.toISOString(),
+              }))}
+              emptyLabel="未有新聞資料，請等候下次自動刷新或撳「即刻刷新價位」。"
+            />
+          </div>
+        }
+        upcoming={
+          <div className="pb-panel">
+            <div className="pb-conc-title">前瞻新聞（我持股相關）</div>
+            <div className="pb-conc-sub">你持有嘅股票最新相關新聞（每隻最多5則）。</div>
+            <NewsList
+              items={stockNews.map((n) => ({
+                id: n.id,
+                ticker: n.ticker,
+                title: n.title,
+                url: n.url,
+                source: n.source,
+                publishedAt: n.publishedAt.toISOString(),
+              }))}
+              emptyLabel="未有相關新聞資料，請等候下次自動刷新或撳「即刻刷新價位」。"
+            />
+          </div>
+        }
+        calendar={
+          <div className="pb-panel">
+            <div className="pb-conc-title">Economic Calendar（未來14日）</div>
+            <div className="pb-conc-sub">主要經濟數據公佈時間表。</div>
+            <EconomicCalendarTable
+              events={calendarEvents.map((e) => ({
+                id: e.id,
+                event: e.event,
+                country: e.country,
+                date: e.date.toISOString(),
+                impact: e.impact,
+                actual: e.actual,
+                forecast: e.forecast,
+                previous: e.previous,
+              }))}
+            />
+          </div>
+        }
+      />
 
       {total === 0 ? (
         <p className="text-sm" style={{ color: "var(--muted)" }}>

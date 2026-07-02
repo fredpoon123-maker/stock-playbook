@@ -99,15 +99,42 @@ model PriceBar {
   @@index([ticker])
 }
 
-model MarketMover {
+model MarketSnapshot {
   id            String   @id @default(cuid())
-  ticker        String
+  ticker        String   @unique
   name          String?
+  sector        String
   price         Float?
   changePercent Float?
-  exchange      String?
-  category      String // GAINER | LOSER | ACTIVE
+  marketCap     Float?
   fetchedAt     DateTime @default(now())
+}
 
-  @@unique([ticker, category])
+model NewsItem {
+  id          String   @id @default(cuid())
+  kind        String // GENERAL | STOCK
+  ticker      String?
+  title       String
+  url         String
+  source      String?
+  publishedAt DateTime
+  fetchedAt   DateTime @default(now())
+
+  @@unique([url, kind])
+  @@index([kind, publishedAt])
+}
+
+model EconomicEvent {
+  id        String   @id @default(cuid())
+  event     String
+  country   String?
+  date      DateTime
+  impact    String?
+  actual    String?
+  forecast  String?
+  previous  String?
+  fetchedAt DateTime @default(now())
+
+  @@unique([event, country, date])
+  @@index([date])
 }

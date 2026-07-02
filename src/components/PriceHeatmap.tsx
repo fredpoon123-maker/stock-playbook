@@ -2,30 +2,34 @@ import Link from "next/link";
 import type { StockView } from "@/lib/types";
 import { squarify } from "@/lib/treemap";
 import { heatmapTile } from "@/lib/heatmapColor";
+import { sectorOf } from "@/lib/marketUniverse";
 
-export type MoverView = {
+export type SnapshotView = {
   ticker: string;
-  name: string | null;
+  sector: string;
   changePercent: number | null;
-  category: "GAINER" | "LOSER" | "ACTIVE";
+  marketCap: number | null;
 };
 
 type HeatItem = {
   key: string;
   ticker: string;
   href: string;
+  external: boolean;
   changePercent: number | null;
   weight: number;
-  group: string;
+  sector: string;
+  isHeld: boolean;
 };
 
 const CANVAS_W = 1000;
 const CANVAS_H = 620;
 const LABEL_H = 18;
-const GROUP_ORDER = ["我的持股", "今日升幅最大", "今日跌幅最大", "成交最活躍"];
 
-export function PriceHeatmap({ stocks, movers }: { stocks: StockView[]; movers: MoverView[] }) {
-  const knownCaps = stocks.map((s) => s.marketCap).filter((c): c is number => c != null);
+export function PriceHeatmap({ stocks, snapshot }: { stocks: StockView[]; snapshot: SnapshotView[] }) {
+  const knownCaps = [...stocks.map((s) => s.marketCap), ...snapshot.map((s) => s.marketCap)].filter(
+    (c): c is number => c != null,
+  );
   const fallbackCap = knownCaps.length > 0 ? Math.min(...knownCaps) * 0.4 : 1;
 
   const placed = new Set(stocks.map((s) => s.ticker));
@@ -33,43 +37,39 @@ export function PriceHeatmap({ stocks, movers }: { stocks: StockView[]; movers: 
     key: `hold-${s.ticker}`,
     ticker: s.ticker,
     href: `/stock/${s.ticker}`,
+    external: false,
     changePercent: s.changePercent,
     weight: s.marketCap ?? fallbackCap,
-    group: "我的持股",
+    sector: sectorOf(s.ticker) ?? s.industry ?? s.driver,
+    isHeld: true,
   }));
 
-  const moverGroup: Record<MoverView["category"], string> = {
-    GAINER: "今日升幅最大",
-    LOSER: "今日跌幅最大",
-    ACTIVE: "成交最活躍",
-  };
-
-  for (const category of ["GAINER", "LOSER", "ACTIVE"] as const) {
-    for (const m of movers.filter((mv) => mv.category === category)) {
-      if (placed.has(m.ticker)) continue;
-      placed.add(m.ticker);
-      items.push({
-        key: `${category}-${m.ticker}`,
-        ticker: m.ticker,
-        href: `https://finance.yahoo.com/quote/${m.ticker}`,
-        changePercent: m.changePercent,
-        weight: Math.max(Math.abs(m.changePercent ?? 0.5), 0.5),
-        group: moverGroup[category],
-      });
-    }
+  for (const s of snapshot) {
+    if (placed.has(s.ticker)) continue;
+    placed.add(s.ticker);
+    items.push({
+      key: `mkt-${s.ticker}`,
+      ticker: s.ticker,
+      href: `https://finance.yahoo.com/quote/${s.ticker}`,
+      external: true,
+      changePercent: s.changePercent,
+      weight: s.marketCap ?? fallbackCap,
+      sector: s.sector,
+      isHeld: false,
+    });
   }
 
-  const byGroup = new Map<string, HeatItem[]>();
+  const bySector = new Map<string, HeatItem[]>();
   for (const item of items) {
-    const list = byGroup.get(item.group) ?? [];
+    const list = bySector.get(item.sector) ?? [];
     list.push(item);
-    byGroup.set(item.group, list);
+    bySector.set(item.sector, list);
   }
 
-  const groupRects = squarify(
-    GROUP_ORDER.filter((g) => byGroup.has(g)).map((group) => ({
-      value: (byGroup.get(group) ?? []).reduce((sum, i) => sum + i.weight, 0),
-      data: group,
+  const sectorRects = squarify(
+    Array.from(bySector.entries()).map(([sector, list]) => ({
+      value: list.reduce((sum, i) => sum + i.weight, 0),
+      data: sector,
     })),
     0,
     0,
@@ -77,8 +77,8 @@ export function PriceHeatmap({ stocks, movers }: { stocks: StockView[]; movers: 
     CANVAS_H,
   );
 
-  const tiles = groupRects.map((region) => {
-    const list = byGroup.get(region.data) ?? [];
+  const tiles = sectorRects.map((region) => {
+    const list = bySector.get(region.data) ?? [];
     const innerY = region.y + LABEL_H;
     const innerH = Math.max(region.h - LABEL_H, 0);
     const rects = squarify(
@@ -102,8 +102,8 @@ export function PriceHeatmap({ stocks, movers }: { stocks: StockView[]; movers: 
 
   return (
     <div className="pb-panel">
-      <div className="pb-conc-title">今日股價變動（我的持股 + 全市場今日升幅/跌幅/成交最活躍）</div>
-      <div className="pb-conc-sub">顏色 = 升跌幅度（綠色=升 / 紅色=跌，深淺代表幅度），灰色 = 未有數據。方塊大細：持股按市值，其他按升跌幅度。</div>
+      <div className="pb-conc-title">今日股價變動（按行業分組，方塊大細 = 市值，金框 = 你持有嘅股票）</div>
+      <div className="pb-conc-sub">顏色 = 升跌幅度（綠色=升 / 紅色=跌，深淺代表幅度）。撳市場股票會開Yahoo Finance，撳自己持股會入詳情頁。</div>
       <div style={{ position: "relative", width: "100%", aspectRatio: `${CANVAS_W} / ${CANVAS_H}` }}>
         {tiles.map(({ region }) => (
           <div
@@ -140,8 +140,8 @@ export function PriceHeatmap({ stocks, movers }: { stocks: StockView[]; movers: 
                 <Link
                   key={item.key}
                   href={item.href}
-                  target={item.href.startsWith("http") ? "_blank" : undefined}
-                  rel={item.href.startsWith("http") ? "noopener noreferrer" : undefined}
+                  target={item.external ? "_blank" : undefined}
+                  rel={item.external ? "noopener noreferrer" : undefined}
                   title={`${item.ticker} ${item.changePercent != null ? item.changePercent.toFixed(2) + "%" : ""}`}
                   style={{
                     position: "absolute",
@@ -151,7 +151,7 @@ export function PriceHeatmap({ stocks, movers }: { stocks: StockView[]; movers: 
                     height: `${(r.h / CANVAS_H) * 100}%`,
                     background: bg,
                     color: fg,
-                    border: "1px solid rgba(255,255,255,0.5)",
+                    border: item.isHeld ? "2px solid #f5c518" : "1px solid rgba(255,255,255,0.5)",
                     boxSizing: "border-box",
                     textDecoration: "none",
                     display: "flex",
@@ -164,6 +164,7 @@ export function PriceHeatmap({ stocks, movers }: { stocks: StockView[]; movers: 
                 >
                   {!tiny && (
                     <span style={{ fontSize: small ? 9.5 : 13, fontWeight: 800, lineHeight: 1.15 }}>
+                      {item.isHeld ? "★" : ""}
                       {item.ticker}
                     </span>
                   )}
