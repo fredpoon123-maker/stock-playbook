@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Conviction {
+  HIGH
+  MED
+  LOW
+}
+
+enum PositionSize {
+  LARGE
+  MEDIUM
+  SMALL
+}
+
+enum StockStatus {
+  ACCUMULATE
+  HOLD
+  AVOID
+}
+
+enum TradeAction {
+  BUY
+  SELL
+}
+
+model Stock {
+  id            String       @id @default(cuid())
+  ticker        String       @unique
+  name          String
+  driver        String
+  industry      String?
+  conviction    Conviction
+  positionSize  PositionSize
+  status        StockStatus
+  synopsis      String?
+  entryTiers    String? // JSON: { first, add, heavy }
+  catalysts     String? // JSON string[]
+  risks         String? // JSON string[]
+  nextEarnings  DateTime?
+  notes         String?
+
+  // SA Premium data (manually entered by user)
+  saQuantRating    String?
+  saFactorGrades   String? // JSON: { valuation, growth, profitability, momentum, revisions }
+  saAuthorRating   String?
+
+  trades        Trade[]
+  priceCache    PriceCache?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Trade {
+  id       String      @id @default(cuid())
+  stockId  String
+  stock    Stock       @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  action   TradeAction
+  price    Float
+  shares   Float
+  date     DateTime
+  note     String?
+
+  createdAt DateTime @default(now())
+}
+
+model PriceCache {
+  id          String   @id @default(cuid())
+  stockId     String   @unique
+  stock       Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  ticker      String
+  price       Float?
+  peRatio     Float?
+  peerAvgPE   Float?
+  marketCap   Float?
+  beta        Float?
+  fetchedAt   DateTime @default(now())
+}
