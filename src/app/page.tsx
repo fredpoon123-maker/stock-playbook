@@ -2,17 +2,28 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { StockGrid } from "@/components/StockGrid";
 import { SummaryTable } from "@/components/SummaryTable";
-import { PriceHeatmap } from "@/components/PriceHeatmap";
+import { PriceHeatmap, type MoverView } from "@/components/PriceHeatmap";
+import { RefreshButton } from "@/components/RefreshButton";
 import { driverColor } from "@/lib/driverColor";
 import { parseJSON, type EntryTiers, type StockView } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const stocks = await prisma.stock.findMany({
-    include: { priceCache: true },
-    orderBy: { ticker: "asc" },
-  });
+  const [stocks, moverRows] = await Promise.all([
+    prisma.stock.findMany({
+      include: { priceCache: true },
+      orderBy: { ticker: "asc" },
+    }),
+    prisma.marketMover.findMany(),
+  ]);
+
+  const movers: MoverView[] = moverRows.map((m) => ({
+    ticker: m.ticker,
+    name: m.name,
+    changePercent: m.changePercent,
+    category: m.category as MoverView["category"],
+  }));
 
   const total = stocks.length;
 
@@ -53,11 +64,15 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <RefreshButton />
         <Link href="/stock/new" className="pb-fbtn active" style={{ textDecoration: "none" }}>
           + 新增股票
         </Link>
       </div>
+
+      <h2 className="pb-section">🔥 Heatmap</h2>
+      <PriceHeatmap stocks={view} movers={movers} />
 
       {total === 0 ? (
         <p className="text-sm" style={{ color: "var(--muted)" }}>
@@ -65,9 +80,6 @@ export default async function DashboardPage() {
         </p>
       ) : (
         <>
-          <h2 className="pb-section">🔥 Heatmap</h2>
-          <PriceHeatmap stocks={view} />
-
           <h2 className="pb-section">⚠️ 驅動因子集中度</h2>
           <div className="pb-concbox">
             <div className="pb-conc-title">你押咗幾多喺同一個驅動因子？（按持股數目，{total} 隻中）</div>

@@ -3,9 +3,13 @@ const BASE_URL = "https://financialmodelingprep.com/stable";
 type FmpQuote = {
   symbol: string;
   price?: number;
-  pe?: number;
   marketCap?: number;
   changePercentage?: number;
+};
+
+type FmpRatiosTtm = {
+  symbol: string;
+  priceToEarningsRatioTTM?: number;
 };
 
 export type Bar = {
@@ -40,9 +44,24 @@ type FmpProfile = {
   beta?: number;
 };
 
-type FmpPeers = {
+type FmpPeer = {
   symbol: string;
-  peersList?: string[];
+};
+
+type FmpMover = {
+  symbol: string;
+  name?: string;
+  price?: number;
+  changesPercentage?: number;
+  exchange?: string;
+};
+
+export type MoverQuote = {
+  ticker: string;
+  name: string | null;
+  price: number | null;
+  changePercent: number | null;
+  exchange: string | null;
 };
 
 function apiKey(): string {
@@ -67,10 +86,14 @@ export async function fetchQuote(ticker: string) {
   if (!quote) return null;
   return {
     price: quote.price ?? null,
-    peRatio: quote.pe ?? null,
     marketCap: quote.marketCap ?? null,
     changePercent: quote.changePercentage ?? null,
   };
+}
+
+export async function fetchPERatio(ticker: string): Promise<number | null> {
+  const data = await fmpGet<FmpRatiosTtm[]>("/ratios-ttm", { symbol: ticker });
+  return data?.[0]?.priceToEarningsRatioTTM ?? null;
 }
 
 export async function fetchDailyHistory(
@@ -119,21 +142,39 @@ export async function fetchBeta(ticker: string) {
 }
 
 export async function fetchPeers(ticker: string): Promise<string[]> {
-  const data = await fmpGet<FmpPeers[]>("/stock-peers", { symbol: ticker });
-  return data?.[0]?.peersList ?? [];
+  const data = await fmpGet<FmpPeer[]>("/stock-peers", { symbol: ticker });
+  return (data ?? []).map((p) => p.symbol).filter(Boolean);
+}
+
+function mapMovers(data: FmpMover[] | null): MoverQuote[] {
+  if (!data) return [];
+  return data.map((m) => ({
+    ticker: m.symbol,
+    name: m.name ?? null,
+    price: m.price ?? null,
+    changePercent: m.changesPercentage ?? null,
+    exchange: m.exchange ?? null,
+  }));
+}
+
+export async function fetchBiggestGainers(): Promise<MoverQuote[]> {
+  return mapMovers(await fmpGet<FmpMover[]>("/biggest-gainers", {}));
+}
+
+export async function fetchBiggestLosers(): Promise<MoverQuote[]> {
+  return mapMovers(await fmpGet<FmpMover[]>("/biggest-losers", {}));
+}
+
+export async function fetchMostActive(): Promise<MoverQuote[]> {
+  return mapMovers(await fmpGet<FmpMover[]>("/most-actives", {}));
 }
 
 export async function fetchPeerAveragePE(ticker: string): Promise<number | null> {
   const peers = await fetchPeers(ticker);
   if (peers.length === 0) return null;
 
-  const peValues: number[] = [];
-  for (const peer of peers.slice(0, 8)) {
-    const quote = await fetchQuote(peer);
-    if (quote?.peRatio != null && Number.isFinite(quote.peRatio)) {
-      peValues.push(quote.peRatio);
-    }
-  }
+  const ratios = await Promise.all(peers.slice(0, 8).map((peer) => fetchPERatio(peer)));
+  const peValues = ratios.filter((r): r is number => r != null && Number.isFinite(r));
   if (peValues.length === 0) return null;
   return peValues.reduce((a, b) => a + b, 0) / peValues.length;
 }

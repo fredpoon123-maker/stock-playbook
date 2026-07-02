@@ -98,3 +98,16 @@ model PriceBar {
   @@unique([ticker, date])
   @@index([ticker])
 }
+
+model MarketMover {
+  id            String   @id @default(cuid())
+  ticker        String
+  name          String?
+  price         Float?
+  changePercent Float?
+  exchange      String?
+  category      String // GAINER | LOSER | ACTIVE
+  fetchedAt     DateTime @default(now())
+
+  @@unique([ticker, category])
+}

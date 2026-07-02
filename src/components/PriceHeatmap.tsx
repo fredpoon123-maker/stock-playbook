@@ -3,27 +3,73 @@ import type { StockView } from "@/lib/types";
 import { squarify } from "@/lib/treemap";
 import { heatmapTile } from "@/lib/heatmapColor";
 
-const CANVAS_W = 1000;
-const CANVAS_H = 500;
-const LABEL_H = 20;
+export type MoverView = {
+  ticker: string;
+  name: string | null;
+  changePercent: number | null;
+  category: "GAINER" | "LOSER" | "ACTIVE";
+};
 
-export function PriceHeatmap({ stocks }: { stocks: StockView[] }) {
-  const withData = stocks.filter((s) => s.changePercent != null);
+type HeatItem = {
+  key: string;
+  ticker: string;
+  href: string;
+  changePercent: number | null;
+  weight: number;
+  group: string;
+};
+
+const CANVAS_W = 1000;
+const CANVAS_H = 620;
+const LABEL_H = 18;
+const GROUP_ORDER = ["我的持股", "今日升幅最大", "今日跌幅最大", "成交最活躍"];
+
+export function PriceHeatmap({ stocks, movers }: { stocks: StockView[]; movers: MoverView[] }) {
   const knownCaps = stocks.map((s) => s.marketCap).filter((c): c is number => c != null);
   const fallbackCap = knownCaps.length > 0 ? Math.min(...knownCaps) * 0.4 : 1;
-  const weight = (s: StockView) => s.marketCap ?? fallbackCap;
 
-  const byDriver = new Map<string, StockView[]>();
-  for (const s of stocks) {
-    const list = byDriver.get(s.driver) ?? [];
-    list.push(s);
-    byDriver.set(s.driver, list);
+  const placed = new Set(stocks.map((s) => s.ticker));
+  const items: HeatItem[] = stocks.map((s) => ({
+    key: `hold-${s.ticker}`,
+    ticker: s.ticker,
+    href: `/stock/${s.ticker}`,
+    changePercent: s.changePercent,
+    weight: s.marketCap ?? fallbackCap,
+    group: "我的持股",
+  }));
+
+  const moverGroup: Record<MoverView["category"], string> = {
+    GAINER: "今日升幅最大",
+    LOSER: "今日跌幅最大",
+    ACTIVE: "成交最活躍",
+  };
+
+  for (const category of ["GAINER", "LOSER", "ACTIVE"] as const) {
+    for (const m of movers.filter((mv) => mv.category === category)) {
+      if (placed.has(m.ticker)) continue;
+      placed.add(m.ticker);
+      items.push({
+        key: `${category}-${m.ticker}`,
+        ticker: m.ticker,
+        href: `https://finance.yahoo.com/quote/${m.ticker}`,
+        changePercent: m.changePercent,
+        weight: Math.max(Math.abs(m.changePercent ?? 0.5), 0.5),
+        group: moverGroup[category],
+      });
+    }
   }
 
-  const driverRects = squarify(
-    Array.from(byDriver.entries()).map(([driver, list]) => ({
-      value: list.reduce((sum, s) => sum + weight(s), 0),
-      data: driver,
+  const byGroup = new Map<string, HeatItem[]>();
+  for (const item of items) {
+    const list = byGroup.get(item.group) ?? [];
+    list.push(item);
+    byGroup.set(item.group, list);
+  }
+
+  const groupRects = squarify(
+    GROUP_ORDER.filter((g) => byGroup.has(g)).map((group) => ({
+      value: (byGroup.get(group) ?? []).reduce((sum, i) => sum + i.weight, 0),
+      data: group,
     })),
     0,
     0,
@@ -31,28 +77,33 @@ export function PriceHeatmap({ stocks }: { stocks: StockView[] }) {
     CANVAS_H,
   );
 
-  const tiles = driverRects.map((region) => {
-    const list = byDriver.get(region.data) ?? [];
+  const tiles = groupRects.map((region) => {
+    const list = byGroup.get(region.data) ?? [];
     const innerY = region.y + LABEL_H;
     const innerH = Math.max(region.h - LABEL_H, 0);
-    const stockRects = squarify(
-      list.map((s) => ({ value: weight(s), data: s })),
+    const rects = squarify(
+      list.map((i) => ({ value: i.weight, data: i })),
       region.x,
       innerY,
       region.w,
       innerH,
     );
-    return { region, stockRects };
+    return { region, rects };
   });
+
+  if (items.length === 0) {
+    return (
+      <div className="pb-panel">
+        <div className="pb-conc-title">今日股價變動</div>
+        <div className="pb-conc-sub">未有價位數據，請等候下次自動刷新或撳「即刻刷新價位」。</div>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-panel">
-      <div className="pb-conc-title">今日股價變動（按驅動因子分組，方塊大細 = 市值）</div>
-      <div className="pb-conc-sub">
-        {withData.length > 0
-          ? "顏色 = 升跌幅度（綠色=升 / 紅色=跌，深淺代表幅度），灰色 = 未刷新。"
-          : "未有價位數據，請等候下次自動刷新或手動觸發 /api/refresh-prices。"}
-      </div>
+      <div className="pb-conc-title">今日股價變動（我的持股 + 全市場今日升幅/跌幅/成交最活躍）</div>
+      <div className="pb-conc-sub">顏色 = 升跌幅度（綠色=升 / 紅色=跌，深淺代表幅度），灰色 = 未有數據。方塊大細：持股按市值，其他按升跌幅度。</div>
       <div style={{ position: "relative", width: "100%", aspectRatio: `${CANVAS_W} / ${CANVAS_H}` }}>
         {tiles.map(({ region }) => (
           <div
@@ -77,17 +128,21 @@ export function PriceHeatmap({ stocks }: { stocks: StockView[] }) {
             {region.data}
           </div>
         ))}
-        {tiles.flatMap(({ stockRects }) =>
-          stockRects
+        {tiles.flatMap(({ rects }) =>
+          rects
             .filter((r) => r.w > 0 && r.h > 0)
             .map((r) => {
-              const s = r.data;
-              const { bg, fg } = heatmapTile(s.changePercent);
-              const small = r.w < 70 || r.h < 40;
+              const item = r.data;
+              const { bg, fg } = heatmapTile(item.changePercent);
+              const small = r.w < 60 || r.h < 32;
+              const tiny = r.w < 34 || r.h < 22;
               return (
                 <Link
-                  key={s.id}
-                  href={`/stock/${s.ticker}`}
+                  key={item.key}
+                  href={item.href}
+                  target={item.href.startsWith("http") ? "_blank" : undefined}
+                  rel={item.href.startsWith("http") ? "noopener noreferrer" : undefined}
+                  title={`${item.ticker} ${item.changePercent != null ? item.changePercent.toFixed(2) + "%" : ""}`}
                   style={{
                     position: "absolute",
                     left: `${(r.x / CANVAS_W) * 100}%`,
@@ -104,15 +159,19 @@ export function PriceHeatmap({ stocks }: { stocks: StockView[] }) {
                     alignItems: "center",
                     justifyContent: "center",
                     overflow: "hidden",
-                    padding: 2,
+                    padding: 1,
                   }}
                 >
-                  <span style={{ fontSize: small ? 10.5 : 14, fontWeight: 800, lineHeight: 1.2 }}>{s.ticker}</span>
+                  {!tiny && (
+                    <span style={{ fontSize: small ? 9.5 : 13, fontWeight: 800, lineHeight: 1.15 }}>
+                      {item.ticker}
+                    </span>
+                  )}
                   {!small && (
-                    <span style={{ fontSize: 11.5, fontWeight: 700 }}>
-                      {s.changePercent != null
-                        ? `${s.changePercent >= 0 ? "+" : ""}${s.changePercent.toFixed(2)}%`
-                        : "未刷新"}
+                    <span style={{ fontSize: 11, fontWeight: 700 }}>
+                      {item.changePercent != null
+                        ? `${item.changePercent >= 0 ? "+" : ""}${item.changePercent.toFixed(2)}%`
+                        : "—"}
                     </span>
                   )}
                 </Link>

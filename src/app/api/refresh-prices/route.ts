@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { fetchQuote, fetchBeta, fetchPeerAveragePE, fetchDailyHistory } from "@/lib/fmp";
+import {
+  fetchQuote,
+  fetchBeta,
+  fetchPERatio,
+  fetchPeerAveragePE,
+  fetchDailyHistory,
+  fetchBiggestGainers,
+  fetchBiggestLosers,
+  fetchMostActive,
+  type MoverQuote,
+} from "@/lib/fmp";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -44,6 +54,35 @@ function isoDaysAgo(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+async function syncMarketMovers() {
+  const [gainers, losers, actives] = await Promise.all([
+    fetchBiggestGainers(),
+    fetchBiggestLosers(),
+    fetchMostActive(),
+  ]);
+
+  const categories: { category: string; quotes: MoverQuote[] }[] = [
+    { category: "GAINER", quotes: gainers },
+    { category: "LOSER", quotes: losers },
+    { category: "ACTIVE", quotes: actives },
+  ];
+
+  for (const { category, quotes } of categories) {
+    if (quotes.length === 0) continue;
+    await prisma.marketMover.deleteMany({ where: { category } });
+    await prisma.marketMover.createMany({
+      data: quotes.map((q) => ({
+        ticker: q.ticker,
+        name: q.name,
+        price: q.price,
+        changePercent: q.changePercent,
+        exchange: q.exchange,
+        category,
+      })),
+    });
+  }
+}
+
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
@@ -58,9 +97,10 @@ export async function GET(request: Request) {
 
   for (const stock of stocks) {
     try {
-      const [quote, beta, peerAvgPE] = await Promise.all([
+      const [quote, beta, peRatio, peerAvgPE] = await Promise.all([
         fetchQuote(stock.ticker),
         fetchBeta(stock.ticker),
+        fetchPERatio(stock.ticker),
         fetchPeerAveragePE(stock.ticker),
       ]);
 
@@ -71,7 +111,7 @@ export async function GET(request: Request) {
           ticker: stock.ticker,
           price: quote?.price ?? null,
           changePercent: quote?.changePercent ?? null,
-          peRatio: quote?.peRatio ?? null,
+          peRatio,
           marketCap: quote?.marketCap ?? null,
           beta,
           peerAvgPE,
@@ -79,7 +119,7 @@ export async function GET(request: Request) {
         update: {
           price: quote?.price ?? null,
           changePercent: quote?.changePercent ?? null,
-          peRatio: quote?.peRatio ?? null,
+          peRatio,
           marketCap: quote?.marketCap ?? null,
           beta,
           peerAvgPE,
@@ -99,5 +139,12 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ refreshed: results.length, results });
+  let moversOk = true;
+  try {
+    await syncMarketMovers();
+  } catch {
+    moversOk = false;
+  }
+
+  return NextResponse.json({ refreshed: results.length, results, moversOk });
 }
