@@ -72,14 +72,29 @@ model Trade {
 }
 
 model PriceCache {
-  id          String   @id @default(cuid())
-  stockId     String   @unique
-  stock       Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
-  ticker      String
-  price       Float?
-  peRatio     Float?
-  peerAvgPE   Float?
-  marketCap   Float?
-  beta        Float?
-  fetchedAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  stockId       String   @unique
+  stock         Stock    @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  ticker        String
+  price         Float?
+  changePercent Float?
+  peRatio       Float?
+  peerAvgPE     Float?
+  marketCap     Float?
+  beta          Float?
+  fetchedAt     DateTime @default(now())
+}
+
+model PriceBar {
+  id     String   @id @default(cuid())
+  ticker String
+  date   DateTime
+  open   Float
+  high   Float
+  low    Float
+  close  Float
+  volume Float?
+
+  @@unique([ticker, date])
+  @@index([ticker])
 }

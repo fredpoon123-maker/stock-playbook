@@ -54,6 +54,7 @@ export type StockView = {
   risks: string[];
   nextEarnings: string | null;
   price: number | null;
+  changePercent: number | null;
   marketCap: number | null;
   beta: number | null;
   peRatio: number | null;

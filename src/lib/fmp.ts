@@ -5,6 +5,34 @@ type FmpQuote = {
   price?: number;
   pe?: number;
   marketCap?: number;
+  changePercentage?: number;
+};
+
+export type Bar = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+};
+
+type FmpEodBar = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+};
+
+type FmpIntradayBar = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
 };
 
 type FmpProfile = {
@@ -41,7 +69,48 @@ export async function fetchQuote(ticker: string) {
     price: quote.price ?? null,
     peRatio: quote.pe ?? null,
     marketCap: quote.marketCap ?? null,
+    changePercent: quote.changePercentage ?? null,
   };
+}
+
+export async function fetchDailyHistory(
+  ticker: string,
+  from?: string,
+  to?: string,
+): Promise<Bar[]> {
+  const params: Record<string, string> = { symbol: ticker };
+  if (from) params.from = from;
+  if (to) params.to = to;
+  const data = await fmpGet<FmpEodBar[]>("/historical-price-eod/full", params);
+  if (!data) return [];
+  return data
+    .map((b) => ({
+      date: b.date,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      close: b.close,
+      volume: b.volume,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export async function fetchIntraday(
+  ticker: string,
+  interval: "5min" | "30min",
+): Promise<Bar[]> {
+  const data = await fmpGet<FmpIntradayBar[]>(`/historical-chart/${interval}`, { symbol: ticker });
+  if (!data) return [];
+  return data
+    .map((b) => ({
+      date: b.date,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      close: b.close,
+      volume: b.volume,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export async function fetchBeta(ticker: string) {

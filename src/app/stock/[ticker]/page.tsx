@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PEBadge } from "@/components/PEBadge";
+import { StockTrendChart } from "@/components/StockTrendChart";
 import {
   CONVICTION_LABEL,
   POSITION_LABEL,
@@ -87,6 +88,8 @@ export default async function StockDetailPage({
       >
         編輯
       </Link>
+
+      <StockTrendChart ticker={stock.ticker} />
 
       {stock.synopsis && (
         <section className="pb-panel">

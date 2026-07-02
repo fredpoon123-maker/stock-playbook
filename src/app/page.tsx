@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { StockGrid } from "@/components/StockGrid";
 import { SummaryTable } from "@/components/SummaryTable";
+import { PriceHeatmap } from "@/components/PriceHeatmap";
 import { driverColor } from "@/lib/driverColor";
 import { parseJSON, type EntryTiers, type StockView } from "@/lib/types";
 
@@ -43,6 +44,7 @@ export default async function DashboardPage() {
     risks: parseJSON<string[]>(s.risks, []),
     nextEarnings: s.nextEarnings ? s.nextEarnings.toISOString() : null,
     price: s.priceCache?.price ?? null,
+    changePercent: s.priceCache?.changePercent ?? null,
     marketCap: s.priceCache?.marketCap ?? null,
     beta: s.priceCache?.beta ?? null,
     peRatio: s.priceCache?.peRatio ?? null,
@@ -63,6 +65,9 @@ export default async function DashboardPage() {
         </p>
       ) : (
         <>
+          <h2 className="pb-section">🔥 Heatmap</h2>
+          <PriceHeatmap stocks={view} />
+
           <h2 className="pb-section">⚠️ 驅動因子集中度</h2>
           <div className="pb-concbox">
             <div className="pb-conc-title">你押咗幾多喺同一個驅動因子？（按持股數目，{total} 隻中）</div>
