@@ -43,3 +43,6 @@ next-env.d.ts
 .env.local
 prisma/dev.db
 node_modules
+
+.vercel
+.env*
